@@ -23,6 +23,7 @@ RUN composer install --no-dev --optimize-autoloader
 
 # DROITS D'ACCÈS CRITIQUES (On donne tous les droits pour le test)
 RUN chmod -R 777 storage bootstrap/cache
+RUN php artisan migrate --force || true
 
 # Commande de démarrage simplifiée
 CMD php artisan config:clear && php artisan view:clear && php artisan migrate --force && apache2-foreground
