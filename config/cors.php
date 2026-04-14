@@ -16,8 +16,10 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
-
+'allowed_origins' => [
+    'https://finance-gestion-client.vercel.app',
+    'http://localhost:5173', // Pour que ça continue de marcher sur ton PC
+],
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],
