@@ -45,24 +45,25 @@ class NotificationController extends Controller
     }
 
     private function createBudgetAlert(int $userId, Setting $settings)
-    {
-        if (! $settings->budget_alert_enabled || ! $settings->monthly_budget) {
-            return;
-        }
-
-        $startOfMonth = Carbon::now()->startOfMonth();
-        $endOfMonth = Carbon::now()->endOfMonth();
-
-        $expenses = Transaction::where('user_id', $userId)
-            ->where('type', 'depense')
-            ->whereBetween('transaction_date', [$startOfMonth, $endOfMonth])
-            ->sum('amount');
-
-        if ($expenses > $settings->monthly_budget) {
-            $message = "📌 Budget dépassé : vous avez dépensé " . number_format($expenses, 2, ',', ' ') . " FCFA ce mois-ci (budget : " . number_format($settings->monthly_budget, 2, ',', ' ') . " FCFA).";
-            $this->createOnce($userId, $message);
-        }
+{
+    // Sécurité : on vérifie que le budget n'est pas nul et est supérieur à 0
+    if (!$settings->budget_alert_enabled || !($settings->monthly_budget > 0)) {
+        return;
     }
+
+    $startOfMonth = Carbon::now()->startOfMonth()->toDateTimeString();
+    $endOfMonth = Carbon::now()->endOfMonth()->toDateTimeString();
+
+    $expenses = Transaction::where('user_id', $userId)
+        ->where('type', 'depense')
+        ->whereBetween('transaction_date', [$startOfMonth, $endOfMonth])
+        ->sum('amount') ?? 0; // Force 0 si nul
+
+    if ($expenses > $settings->monthly_budget) {
+        $message = "📌 Budget dépassé : vous avez dépensé " . number_format((float)$expenses, 0, ',', ' ') . " FCFA ce mois-ci.";
+        $this->createOnce($userId, $message);
+    }
+}
 
     private function createCategoryBudgetAlerts(int $userId, Setting $settings)
 {
@@ -99,21 +100,20 @@ class NotificationController extends Controller
 }
 
     private function createLowBalanceAlert(int $userId, Setting $settings)
-    {
-        if (! $settings->low_balance_alert_enabled || ! $settings->low_balance_threshold) {
-            return;
-        }
-
-        // Calcul du solde courant
-        $revenues = Transaction::where('user_id', $userId)->where('type', 'revenu')->sum('amount');
-        $expenses = Transaction::where('user_id', $userId)->where('type', 'depense')->sum('amount');
-        $balance = $revenues - $expenses;
-
-        if ($balance < $settings->low_balance_threshold) {
-            $message = "⚠ Solde faible : votre trésorerie est de " . number_format($balance, 2, ',', ' ') . " FCFA (seuil : " . number_format($settings->low_balance_threshold, 2, ',', ' ') . " FCFA).";
-            $this->createOnce($userId, $message);
-        }
+{
+    if (!$settings->low_balance_alert_enabled || !($settings->low_balance_threshold > 0)) {
+        return;
     }
+
+    $revenues = Transaction::where('user_id', $userId)->where('type', 'revenu')->sum('amount') ?? 0;
+    $expenses = Transaction::where('user_id', $userId)->where('type', 'depense')->sum('amount') ?? 0;
+    $balance = $revenues - $expenses;
+
+    if ($balance < $settings->low_balance_threshold) {
+        $message = "⚠ Solde faible : votre trésorerie est de " . number_format((float)$balance, 0, ',', ' ') . " FCFA.";
+        $this->createOnce($userId, $message);
+    }
+}
 
     private function createDueSoonDebtAlerts(int $userId, Setting $settings)
     {
@@ -149,19 +149,20 @@ class NotificationController extends Controller
     }
 
     private function createOnce(int $userId, string $message)
-    {
-        $exists = Notification::where('user_id', $userId)
-            ->where('message', $message)
-            ->where('created_at', '>=', Carbon::now()->subDay())
-            ->exists();
+{
+    // On simplifie la vérification pour éviter les bugs de fuseau horaire
+    $exists = Notification::where('user_id', $userId)
+        ->where('message', $message)
+        ->where('created_at', '>', now()->subHours(24))
+        ->exists();
 
-        if (! $exists) {
-            Notification::create([
-                'user_id' => $userId,
-                'message' => $message,
-            ]);
-        }
+    if (!$exists) {
+        Notification::create([
+            'user_id' => $userId,
+            'message' => $message,
+        ]);
     }
+}
 
     public function markAsRead($id)
     {

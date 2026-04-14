@@ -25,19 +25,22 @@ class Category extends Model
      * Calcule le montant dépensé dans cette catégorie pour le mois en cours
      * Seules les transactions de type "depense" sont comptées
      */
-    public function getSpentThisMonth()
-    {
-        $currentMonth = now()->startOfMonth();
-        $nextMonth = now()->addMonth()->startOfMonth();
+   public function getSpentThisMonth()
+{
+    // On force le format Y-m-d pour que PostgreSQL ne soit pas perdu
+    $start = now()->startOfMonth()->format('Y-m-d');
+    $end = now()->endOfMonth()->format('Y-m-d');
 
-        return \App\Models\Transaction::whereBetween('transaction_date', [$currentMonth, $nextMonth])
-            ->where('type', 'depense') // IMPORTANT: seulement les dépenses
-            ->where(function ($query) {
-                $query->where('category_id', $this->id)
-                      ->orWhere('budget_id', $this->id);
-            })
-            ->sum('amount');
-    }
+    return \App\Models\Transaction::where('user_id', $this->user_id)
+        ->where('type', 'depense')
+        // On utilise explicitement les dates au format string Y-m-d
+        ->whereBetween('transaction_date', [$start, $end])
+        ->where(function ($query) {
+            $query->where('category_id', $this->id)
+                  ->orWhere('budget_id', $this->id);
+        })
+        ->sum('amount');
+}
 
     /**
      * Calcule le reste du budget pour le mois
