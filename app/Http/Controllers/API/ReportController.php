@@ -27,15 +27,16 @@ class ReportController extends Controller
             : 'DATE(transaction_date)';
 
         $summary = Transaction::where('user_id', $userId)
-            ->whereBetween('transaction_date', [$fromDate->toDateString(), $toDate->toDateString()])
-            ->select(
-                DB::raw("$dayExpr as day"),
-                DB::raw('SUM(CASE WHEN type="revenu" THEN amount ELSE 0 END) as revenus'),
-                DB::raw('SUM(CASE WHEN type="depense" THEN amount ELSE 0 END) as depenses')
-            )
-            ->groupBy(DB::raw($dayExpr))
-            ->orderBy('day', 'asc')
-            ->get();
+        ->whereBetween('transaction_date', [$fromDate->toDateString(), $toDate->toDateString()])
+        ->select(
+            DB::raw("DATE(transaction_date) as day"),
+            // Utiliser des guillemets simples '' pour les chaînes de caractères en SQL
+            DB::raw("SUM(CASE WHEN type='revenu' THEN amount ELSE 0 END) as revenus"),
+            DB::raw("SUM(CASE WHEN type='depense' THEN amount ELSE 0 END) as depenses")
+        )
+        ->groupBy(DB::raw("DATE(transaction_date)"))
+        ->orderBy('day', 'asc')
+        ->get();
 
         $transactions = Transaction::with(['category:id,name,nature,description'])
             ->where('user_id', $userId)
@@ -53,26 +54,20 @@ class ReportController extends Controller
     }
 
     // Rapport mensuel
-    public function monthly()
-    {
-        $driver = DB::connection()->getDriverName();
-        $monthExpr = $driver === 'sqlite'
-            ? "strftime('%Y-%m', transaction_date)"
-            : 'DATE_FORMAT(transaction_date, "%Y-%m")';
+   public function monthly() {
+    $report = Transaction::where('user_id', auth()->id())
+        ->select(
+            // TO_CHAR est l'équivalent PostgreSQL de DATE_FORMAT
+            DB::raw("TO_CHAR(transaction_date, 'YYYY-MM') as month"),
+            DB::raw("SUM(CASE WHEN type='revenu' THEN amount ELSE 0 END) as revenus"),
+            DB::raw("SUM(CASE WHEN type='depense' THEN amount ELSE 0 END) as depenses")
+        )
+        ->groupBy(DB::raw("TO_CHAR(transaction_date, 'YYYY-MM')"))
+        ->orderBy('month', 'asc')
+        ->get();
 
-        $report = Transaction::where('user_id', auth()->id())
-            ->select(
-                DB::raw("$monthExpr as month"),
-                DB::raw('SUM(CASE WHEN type="revenu" THEN amount ELSE 0 END) as revenus'),
-                DB::raw('SUM(CASE WHEN type="depense" THEN amount ELSE 0 END) as depenses')
-            )
-            ->groupBy(DB::raw($monthExpr))
-            ->orderBy('month', 'asc')
-            ->get();
-
-        return response()->json($report);
-    }
-
+    return response()->json($report);
+}
 
     // Rapport annuel
     public function yearly()

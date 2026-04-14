@@ -21,9 +21,7 @@ use App\Http\Controllers\API\UserController;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::get('/debug-mike', function() {
-    return response()->json(['message' => 'Ceci est le code de Mike du 14 avril']);
-});
+
 
 /*
 |--------------------------------------------------------------------------
