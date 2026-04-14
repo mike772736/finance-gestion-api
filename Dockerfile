@@ -6,20 +6,16 @@ RUN apt-get update && apt-get install -y \
     zip unzip libpq-dev && \
     docker-php-ext-install gd zip pdo pdo_pgsql
 
-# Config Apache (CORRIGÉE)
+# Config Apache
 RUN a2enmod rewrite headers
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 
-# On configure Apache pour pointer vers /public
+# On définit le dossier public comme racine
+ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# ON FORCE L'AUTORISATION DU .htaccess (Indispensable pour Laravel sur Render)
-RUN echo '<Directory /var/www/html/public>\n\
-    Options Indexes FollowSymLinks\n\
-    AllowOverride All\n\
-    Require all granted\n\
-</Directory>' >> /etc/apache2/apache2.conf
+# On autorise le .htaccess de manière très simple
+RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
 WORKDIR /var/www/html
 COPY . .
@@ -28,7 +24,7 @@ COPY . .
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 RUN composer install --no-dev --optimize-autoloader
 
-# DROITS D'ACCÈS
+# Droits d'accès
 RUN chmod -R 777 storage bootstrap/cache
 
 # Commande de démarrage
