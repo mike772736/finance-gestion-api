@@ -11,6 +11,8 @@ use App\Http\Controllers\API\SettingController;
 use App\Http\Controllers\API\DebtController;
 use App\Http\Controllers\API\NotificationController;
 use App\Http\Controllers\API\UserController;
+use Illuminate\Support\Facades\Artisan;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -108,5 +110,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/settings', [SettingController::class, 'index']);
     Route::put('/settings', [SettingController::class, 'update']);
+
+// Cette route va nettoyer ta base de données quand tu la visiteras
+Route::get('/nettoyage-complet', function () {
+    // Force la suppression et la recréation de toutes les tables
+    Artisan::call('migrate:fresh', ['--force' => true]);
+    return "Ta base de données est maintenant toute neuve !";
+});
 
 });
