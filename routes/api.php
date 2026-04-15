@@ -2,7 +2,6 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\TransactionController;
 use App\Http\Controllers\API\CategoryController;
@@ -15,123 +14,82 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
-
 /*
 |--------------------------------------------------------------------------
-| AUTHENTIFICATION
+| ROUTES PUBLIQUES & REPARATION
 |--------------------------------------------------------------------------
 */
+
+// ROUTE DE SECOURS : À visiter une seule fois pour tout réparer
+Route::get('/nettoyage-ultime', function () {
+    try {
+        // Force la déconnexion des utilisateurs pour éviter les verrous
+        DB::statement('SET CONSTRAINTS ALL DEFERRED');
+        
+        // Méthode nucléaire : On rase le schéma public de PostgreSQL
+        DB::statement('DROP SCHEMA public CASCADE');
+        DB::statement('CREATE SCHEMA public');
+        DB::statement('GRANT ALL ON SCHEMA public TO public');
+        DB::statement('GRANT ALL ON SCHEMA public TO postgres');
+
+        // On relance proprement les migrations
+        Artisan::call('migrate', ['--force' => true]);
+
+        return "🚀 Succès ! La base de données a été rasée et reconstruite proprement. Tu peux maintenant créer un compte et tester.";
+    } catch (\Exception $e) {
+        return "❌ Erreur : " . $e->getMessage();
+    }
+});
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-
-
 /*
 |--------------------------------------------------------------------------
-| ROUTES PROTEGEES (UTILISATEUR CONNECTÉ)
+| ROUTES PROTEGEES (AUTH SANCTUM)
 |--------------------------------------------------------------------------
 */
 
 Route::middleware('auth:sanctum')->group(function () {
 
-    /*
-    |--------------------------------------------------------------------------
-    | USER
-    |--------------------------------------------------------------------------
-    */
-
+    // USER
     Route::get('/user', [UserController::class, 'show']);
     Route::put('/user', [UserController::class, 'update']);
     Route::put('/user/password', [UserController::class, 'updatePassword']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | TRANSACTIONS
-    |--------------------------------------------------------------------------
-    */
-
+    // TRANSACTIONS
     Route::get('/transactions', [TransactionController::class, 'index']);
     Route::post('/transactions', [TransactionController::class, 'store']);
     Route::get('/transactions/{id}', [TransactionController::class, 'show']);
     Route::put('/transactions/{id}', [TransactionController::class, 'update']);
     Route::delete('/transactions/{id}', [TransactionController::class, 'destroy']);
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | CATEGORIES
-    |--------------------------------------------------------------------------
-    */
-
+    // CATEGORIES & BUDGETS
+    // On place le summary AVANT les routes avec {id} pour éviter les conflits
+    Route::get('/categories/summary/budgets', [CategoryController::class, 'summary']);
     Route::get('/categories', [CategoryController::class, 'index']);
     Route::post('/categories', [CategoryController::class, 'store']);
     Route::put('/categories/{id}', [CategoryController::class, 'update']);
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
-    Route::get('/categories/summary/budgets', [CategoryController::class, 'summary']);
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | RAPPORTS
-    |--------------------------------------------------------------------------
-    */
-
+    // RAPPORTS
     Route::get('/reports/daily', [ReportController::class, 'daily']);
     Route::get('/reports/monthly', [ReportController::class, 'monthly']);
     Route::get('/reports/yearly', [ReportController::class, 'yearly']);
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | DETTES
-    |--------------------------------------------------------------------------
-    */
-
+    // DETTES
     Route::get('/debts', [DebtController::class, 'index']);
     Route::post('/debts', [DebtController::class, 'store']);
     Route::get('/debts/{id}', [DebtController::class, 'show']);
     Route::put('/debts/{id}', [DebtController::class, 'update']);
     Route::delete('/debts/{id}', [DebtController::class, 'destroy']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | NOTIFICATIONS
-    |--------------------------------------------------------------------------
-    */
-
+    // NOTIFICATIONS
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | PARAMETRES
-    |--------------------------------------------------------------------------
-    */
-
+    // PARAMETRES
     Route::get('/settings', [SettingController::class, 'index']);
     Route::put('/settings', [SettingController::class, 'update']);
-
-// Cette route va nettoyer ta base de données quand tu la visiteras
-    Route::get('/nettoyage-ultime', function () {
-    try {
-        // 1. Désactiver les contraintes de clés étrangères pour PostgreSQL
-        DB::statement('SET CONSTRAINTS ALL DEFERRED'); 
-        // Ou plus radical pour Postgres :
-        $tables = DB::select("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'");
-        foreach ($tables as $table) {
-            DB::statement('DROP TABLE IF EXISTS ' . $table->tablename . ' CASCADE');
-        }
-
-        // 2. Relancer les migrations proprement
-        Artisan::call('migrate', ['--force' => true]);
-
-        return "Destruction et reconstruction réussies ! Ta base est 100% propre.";
-    } catch (\Exception $e) {
-        Log::error($e->getMessage());
-        return "Erreur lors du nettoyage : " . $e->getMessage();
-    }
-    });
-
 });
