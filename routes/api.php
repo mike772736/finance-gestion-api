@@ -12,6 +12,8 @@ use App\Http\Controllers\API\DebtController;
 use App\Http\Controllers\API\NotificationController;
 use App\Http\Controllers\API\UserController;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 
 /*
@@ -112,10 +114,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/settings', [SettingController::class, 'update']);
 
 // Cette route va nettoyer ta base de données quand tu la visiteras
-Route::get('/nettoyage-complet', function () {
-    // Force la suppression et la recréation de toutes les tables
-    Artisan::call('migrate:fresh', ['--force' => true]);
-    return "Ta base de données est maintenant toute neuve !";
-});
+    Route::get('/nettoyage-ultime', function () {
+    try {
+        // 1. Désactiver les contraintes de clés étrangères pour PostgreSQL
+        DB::statement('SET CONSTRAINTS ALL DEFERRED'); 
+        // Ou plus radical pour Postgres :
+        $tables = DB::select("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'");
+        foreach ($tables as $table) {
+            DB::statement('DROP TABLE IF EXISTS ' . $table->tablename . ' CASCADE');
+        }
+
+        // 2. Relancer les migrations proprement
+        Artisan::call('migrate', ['--force' => true]);
+
+        return "Destruction et reconstruction réussies ! Ta base est 100% propre.";
+    } catch (\Exception $e) {
+        Log::error($e->getMessage());
+        return "Erreur lors du nettoyage : " . $e->getMessage();
+    }
+    });
 
 });
