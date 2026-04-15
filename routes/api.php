@@ -23,21 +23,18 @@ use Illuminate\Support\Facades\DB;
 // ROUTE DE SECOURS : À visiter une seule fois pour tout réparer
 Route::get('/nettoyage-ultime', function () {
     try {
-        // Force la déconnexion des utilisateurs pour éviter les verrous
-        DB::statement('SET CONSTRAINTS ALL DEFERRED');
-        
-        // Méthode nucléaire : On rase le schéma public de PostgreSQL
+        // 1. On rase complètement le schéma public (radical pour PostgreSQL)
         DB::statement('DROP SCHEMA public CASCADE');
         DB::statement('CREATE SCHEMA public');
         DB::statement('GRANT ALL ON SCHEMA public TO public');
-        DB::statement('GRANT ALL ON SCHEMA public TO postgres');
-
-        // On relance proprement les migrations
+        
+        // 2. On réinitialise les migrations de Laravel
+        // On utilise "migrate" simplement puisque la base est vide
         Artisan::call('migrate', ['--force' => true]);
 
-        return "🚀 Succès ! La base de données a été rasée et reconstruite proprement. Tu peux maintenant créer un compte et tester.";
+        return "🚀 SUCCESS ! La base de données a été totalement réinitialisée. Tu peux maintenant recréer ton compte et tes budgets fonctionneront.";
     } catch (\Exception $e) {
-        return "❌ Erreur : " . $e->getMessage();
+        return "❌ Erreur lors du nettoyage : " . $e->getMessage();
     }
 });
 
