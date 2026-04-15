@@ -21,22 +21,7 @@ use Illuminate\Support\Facades\DB;
 */
 
 // ROUTE DE SECOURS : À visiter une seule fois pour tout réparer
-Route::get('/nettoyage-ultime', function () {
-    try {
-        // 1. On rase complètement le schéma public (radical pour PostgreSQL)
-        DB::statement('DROP SCHEMA public CASCADE');
-        DB::statement('CREATE SCHEMA public');
-        DB::statement('GRANT ALL ON SCHEMA public TO public');
-        
-        // 2. On réinitialise les migrations de Laravel
-        // On utilise "migrate" simplement puisque la base est vide
-        Artisan::call('migrate', ['--force' => true]);
 
-        return "🚀 SUCCESS ! La base de données a été totalement réinitialisée. Tu peux maintenant recréer ton compte et tes budgets fonctionneront.";
-    } catch (\Exception $e) {
-        return "❌ Erreur lors du nettoyage : " . $e->getMessage();
-    }
-});
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);

@@ -28,4 +28,4 @@ RUN composer install --no-dev --optimize-autoloader
 RUN chmod -R 777 storage bootstrap/cache
 
 # COMMANDE DE DÉMARRAGE : Tout sur une seule ligne sans coupure
-CMD php artisan config:cache && php artisan route:cache && apache2-foreground
+CMD php artisan config:cache && php artisan route:cache && php artisan migrate --force && apache2-foreground
