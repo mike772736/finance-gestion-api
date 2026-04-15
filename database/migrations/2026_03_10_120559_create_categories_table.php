@@ -13,8 +13,12 @@ return new class extends Migration
 {
     Schema::create('categories', function (Blueprint $table) {
         $table->id();
+        $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Indispensable pour Auth::id()
         $table->string('name');
-        $table->enum('type',['revenu','depense']);
+        $table->string('nature')->nullable(); // Pour "Essentiel", "Loisir", etc.
+        $table->text('description')->nullable();
+        $table->decimal('budget_amount', 15, 2)->default(0); // Le montant du budget !
+        $table->enum('type', ['revenu', 'depense'])->default('depense'); 
         $table->timestamps();
     });
 }
