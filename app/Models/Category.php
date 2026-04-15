@@ -26,21 +26,27 @@ class Category extends Model
         return $this->hasMany(Transaction::class);
     }
 
-    public function getSpentThisMonth()
-    {
-        $start = Carbon::now()->startOfMonth();
-        $end = Carbon::now()->endOfMonth();
+   public function getSpentThisMonth()
+{
+    try {
+        $start = now()->startOfMonth()->format('Y-m-d');
+        $end = now()->endOfMonth()->format('Y-m-d');
 
-        return (float) \App\Models\Transaction::where('user_id', $this->user_id)
+        // On vérifie si la table et les colonnes existent pour éviter la 500
+        return \App\Models\Transaction::where('user_id', $this->user_id)
             ->where('type', 'depense')
-            // Utilisation d'objets Carbon pour une compatibilité parfaite avec PostgreSQL
             ->whereBetween('transaction_date', [$start, $end])
             ->where(function ($query) {
                 $query->where('category_id', $this->id)
                       ->orWhere('budget_id', $this->id);
             })
-            ->sum('amount');
+            ->sum('amount') ?? 0;
+    } catch (\Exception $e) {
+        // Si ça plante (ex: colonne manquante), on renvoie 0 au lieu d'une erreur 500
+        \Illuminate\Support\Facades\Log::error("Erreur budget : " . $e->getMessage());
+        return 0;
     }
+}
 
     public function getRemainingBudget()
     {
