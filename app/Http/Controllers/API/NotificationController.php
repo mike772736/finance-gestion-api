@@ -11,13 +11,13 @@ use App\Models\Setting;
 use App\Models\Transaction;
 use Carbon\Carbon;
 
-
 class NotificationController extends Controller
 {
     public function index()
     {
         $userId = auth()->id();
 
+        // On s'assure que les réglages existent
         $settings = Setting::firstOrCreate(
             ['user_id' => $userId],
             [
@@ -25,104 +25,94 @@ class NotificationController extends Controller
                 'language' => 'fr',
                 'theme' => 'light',
                 'notifications' => true,
-                'monthly_budget' => null,
+                'monthly_budget' => 0,
                 'budget_alert_enabled' => true,
-                'low_balance_threshold' => null,
+                'low_balance_threshold' => 0,
                 'low_balance_alert_enabled' => true,
                 'due_soon_days' => 7,
                 'due_soon_alert_enabled' => true,
             ]
         );
 
-        // Générer des alertes à chaque appel si nécessaire
-        $this->createBudgetAlert($userId, $settings);
-        $this->createCategoryBudgetAlerts($userId, $settings);
-        $this->createLowBalanceAlert($userId, $settings);
-        $this->createDueSoonDebtAlerts($userId, $settings);
-        $this->createOverdueDebtAlerts($userId);
+        // On entoure les alertes par un try/catch pour que si une échoue, 
+        // l'utilisateur reçoive quand même ses notifications existantes.
+        try {
+            $this->createBudgetAlert($userId, $settings);
+            $this->createCategoryBudgetAlerts($userId, $settings);
+            $this->createLowBalanceAlert($userId, $settings);
+            $this->createDueSoonDebtAlerts($userId, $settings);
+            $this->createOverdueDebtAlerts($userId);
+        } catch (\Exception $e) {
+            // Log l'erreur en silence pour ne pas casser l'API
+        }
 
-        return Notification::where('user_id', $userId)->orderBy('created_at', 'desc')->get();
+        return Notification::where('user_id', $userId)
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     private function createBudgetAlert(int $userId, Setting $settings)
-{
-    // Sécurité : on vérifie que le budget n'est pas nul et est supérieur à 0
-    if (!$settings->budget_alert_enabled || !($settings->monthly_budget > 0)) {
-        return;
-    }
+    {
+        $budget = (float)($settings->monthly_budget ?? 0);
+        if (!$settings->budget_alert_enabled || $budget <= 0) return;
 
-    $startOfMonth = Carbon::now()->startOfMonth()->toDateTimeString();
-    $endOfMonth = Carbon::now()->endOfMonth()->toDateTimeString();
-
-    $expenses = Transaction::where('user_id', $userId)
-        ->where('type', 'depense')
-        ->whereBetween('transaction_date', [$startOfMonth, $endOfMonth])
-        ->sum('amount') ?? 0; // Force 0 si nul
-
-    if ($expenses > $settings->monthly_budget) {
-        $message = "📌 Budget dépassé : vous avez dépensé " . number_format((float)$expenses, 0, ',', ' ') . " FCFA ce mois-ci.";
-        $this->createOnce($userId, $message);
-    }
-}
-
-    private function createCategoryBudgetAlerts(int $userId, Setting $settings)
-{
-    if (! $settings->budget_alert_enabled) {
-        return;
-    }
-
-    $startOfMonth = Carbon::now()->startOfMonth();
-    $endOfMonth = Carbon::now()->endOfMonth();
-
-    // 1. SECURITÉ : On ne récupère que les catégories de l'utilisateur connecté (Mike)
-    // 2. FILTRE : On ne prend que celles qui ont un budget défini (budget_amount > 0)
-    $categories = Category::where('user_id', $userId)
-        ->where('budget_amount', '>', 0) 
-        ->get();
-
-    foreach ($categories as $category) {
-        // On calcule les dépenses pour CETTE catégorie précise
-        $expenses = Transaction::where('user_id', $userId)
-            ->where('category_id', $category->id)
+        $expenses = (float) Transaction::where('user_id', $userId)
             ->where('type', 'depense')
-            ->whereBetween('transaction_date', [$startOfMonth, $endOfMonth])
+            ->whereMonth('transaction_date', now()->month)
+            ->whereYear('transaction_date', now()->year)
             ->sum('amount');
 
-        // On compare avec 'budget_amount' (le nom exact de ta colonne SQL)
-        if ($expenses > $category->budget_amount) {
-            $message = "⚠ Budget catégorie dépassé (" . $category->name . ") : " . 
-                       number_format($expenses, 0, ',', ' ') . " FCFA (budget : " . 
-                       number_format($category->budget_amount, 0, ',', ' ') . " FCFA).";
-            
+        if ($expenses > $budget) {
+            $message = "📌 Budget mensuel dépassé : " . number_format($expenses, 0, ',', ' ') . " FCFA dépensés.";
             $this->createOnce($userId, $message);
         }
     }
-}
+
+    private function createCategoryBudgetAlerts(int $userId, Setting $settings)
+    {
+        if (!$settings->budget_alert_enabled) return;
+
+        $categories = Category::where('user_id', $userId)
+            ->where('budget_amount', '>', 0) 
+            ->get();
+
+        foreach ($categories as $category) {
+            $limit = (float) $category->budget_amount;
+            $spent = (float) Transaction::where('user_id', $userId)
+                ->where('category_id', $category->id)
+                ->where('type', 'depense')
+                ->whereMonth('transaction_date', now()->month)
+                ->whereYear('transaction_date', now()->year)
+                ->sum('amount');
+
+            if ($spent > $limit) {
+                $message = "⚠ Budget catégorie dépassé (" . $category->name . ") : " . number_format($spent, 0, ',', ' ') . " FCFA.";
+                $this->createOnce($userId, $message);
+            }
+        }
+    }
 
     private function createLowBalanceAlert(int $userId, Setting $settings)
-{
-    if (!$settings->low_balance_alert_enabled || !($settings->low_balance_threshold > 0)) {
-        return;
-    }
+    {
+        $threshold = (float)($settings->low_balance_threshold ?? 0);
+        if (!$settings->low_balance_alert_enabled || $threshold <= 0) return;
 
-    $revenues = Transaction::where('user_id', $userId)->where('type', 'revenu')->sum('amount') ?? 0;
-    $expenses = Transaction::where('user_id', $userId)->where('type', 'depense')->sum('amount') ?? 0;
-    $balance = $revenues - $expenses;
+        $revenues = (float) Transaction::where('user_id', $userId)->where('type', 'revenu')->sum('amount');
+        $expenses = (float) Transaction::where('user_id', $userId)->where('type', 'depense')->sum('amount');
+        $balance = $revenues - $expenses;
 
-    if ($balance < $settings->low_balance_threshold) {
-        $message = "⚠ Solde faible : votre trésorerie est de " . number_format((float)$balance, 0, ',', ' ') . " FCFA.";
-        $this->createOnce($userId, $message);
+        if ($balance < $threshold) {
+            $message = "⚠ Solde faible : votre trésorerie est de " . number_format($balance, 0, ',', ' ') . " FCFA.";
+            $this->createOnce($userId, $message);
+        }
     }
-}
 
     private function createDueSoonDebtAlerts(int $userId, Setting $settings)
     {
-        if (! $settings->due_soon_alert_enabled || ! $settings->due_soon_days) {
-            return;
-        }
+        if (!$settings->due_soon_alert_enabled || !$settings->due_soon_days) return;
 
         $today = Carbon::today();
-        $dueMax = Carbon::today()->addDays($settings->due_soon_days);
+        $dueMax = Carbon::today()->addDays((int)$settings->due_soon_days);
 
         $dueSoon = Debt::where('user_id', $userId)
             ->where('status', '!=', 'paid')
@@ -130,7 +120,7 @@ class NotificationController extends Controller
             ->get();
 
         foreach ($dueSoon as $debt) {
-            $message = "⚠ Dette à venir : " . $debt->creditor_name . " (" . number_format($debt->amount, 2, ',', ' ') . " FCFA) due le " . $debt->due_date->format('d/m/Y') . ".";
+            $message = "⚠ Dette à venir : " . $debt->creditor_name . " due le " . $debt->due_date->format('d/m/Y');
             $this->createOnce($userId, $message);
         }
     }
@@ -143,26 +133,25 @@ class NotificationController extends Controller
             ->get();
 
         foreach ($overdue as $debt) {
-            $message = "⏰ Dette en retard : " . $debt->creditor_name . " (" . number_format($debt->amount, 2, ',', ' ') . " FCFA) due le " . $debt->due_date->format('d/m/Y') . ".";
+            $message = "⏰ Dette en retard : " . $debt->creditor_name . " était due le " . $debt->due_date->format('d/m/Y');
             $this->createOnce($userId, $message);
         }
     }
 
     private function createOnce(int $userId, string $message)
-{
-    // On simplifie la vérification pour éviter les bugs de fuseau horaire
-    $exists = Notification::where('user_id', $userId)
-        ->where('message', $message)
-        ->where('created_at', '>', now()->subHours(24))
-        ->exists();
+    {
+        $exists = Notification::where('user_id', $userId)
+            ->where('message', $message)
+            ->where('created_at', '>', now()->subHours(24))
+            ->exists();
 
-    if (!$exists) {
-        Notification::create([
-            'user_id' => $userId,
-            'message' => $message,
-        ]);
+        if (!$exists) {
+            Notification::create([
+                'user_id' => $userId,
+                'message' => $message,
+            ]);
+        }
     }
-}
 
     public function markAsRead($id)
     {
@@ -171,28 +160,10 @@ class NotificationController extends Controller
         return response()->json($notification);
     }
 
-    public function destroy( $id)
+    public function destroy($id)
     {
         $notification = Notification::where('user_id', auth()->id())->findOrFail($id);
         $notification->delete();
         return response()->json(["message" => "Notification supprimée"]);
     }
-    private function createSpendingTrendAlert(int $userId)
-{
-    $lastWeek = Transaction::where('user_id', $userId)
-        ->where('type', 'depense')
-        ->whereBetween('transaction_date', [now()->subDays(14), now()->subDays(7)])
-        ->sum('amount');
-
-    $thisWeek = Transaction::where('user_id', $userId)
-        ->where('type', 'depense')
-        ->whereBetween('transaction_date', [now()->subDays(7), now()])
-        ->sum('amount');
-
-    if ($thisWeek > $lastWeek * 1.5) { 
-        $diff = number_format($thisWeek - $lastWeek, 0, ',', ' ');
-        $message = "💡 Analyse : Vos dépenses ont augmenté de {$diff} FCFA par rapport à la semaine dernière. Pensez à vérifier vos sorties récentes.";
-        $this->createOnce($userId, $message);
-    }
-}
 }
