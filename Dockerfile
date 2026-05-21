@@ -28,4 +28,4 @@ RUN composer install --no-dev --optimize-autoloader
 RUN chmod -R 777 storage bootstrap/cache
 
 # COMMANDE DE DÉMARRAGE : Ajout de la migration forcée avant le lancement d'Apache
-CMD php artisan config:cache && php artisan route:cache && php artisan migrate --force && apache2-foreground
+CMD php artisan config:cache && php artisan route:cache && apache2-foreground
